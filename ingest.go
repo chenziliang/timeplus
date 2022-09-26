@@ -117,7 +117,7 @@ func doIngest(timeplusClient *client.TimeplusClient, streamName string, batchSiz
 	wg.Wait()
 }
 
-func ingest(timeplusClient *client.TimeplusClient, streamName string, numStreams int, batchSize int, iterations int, concurrency int) {
+func ingest(timeplusClient *client.TimeplusClient, tenant string, streamName string, numStreams int, batchSize int, iterations int, concurrency int) {
 	for n := 0; n < numStreams; n++ {
 		if err := createStream(timeplusClient, fmt.Sprintf("%s%d", streamName, n+1)); err != nil {
 			return
@@ -140,15 +140,14 @@ func ingest(timeplusClient *client.TimeplusClient, streamName string, numStreams
 	total := int64(iterations) * int64(batchSize) * int64(concurrency) * int64(numStreams)
 	eps := (total * 1000) / took_ms
 
-	fmt.Printf("Ingested to %d streams with total %d rows in %d milliseconds, eps=%d\n", numStreams, total, took_ms, eps)
+	fmt.Printf("Ingested to %d streams workspace=%s with total %d rows in %d milliseconds, eps=%d\n", numStreams, tenant, total, took_ms, eps)
 }
 
 func main() {
-	timeplusAddress := ""
-	timeplusApiKey := ""
-	timeplusTenant := ""
+	apiKeys := []string{}
+	tenants := []string{}
 
-	timeplusClient := client.NewCient(timeplusAddress, timeplusTenant, timeplusApiKey)
+	timeplusAddress := "https://beta.timeplus.cloud"
 
 	streamName := "perf"
 	numStreams := 10
@@ -156,5 +155,14 @@ func main() {
 	iterations := 100
 	concurrency := 10
 
-	ingest(timeplusClient, streamName, numStreams, batchSize, iterations, concurrency)
+	var wg sync.WaitGroup
+	for i := 0; i < len(apiKeys); i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			timeplusClient := client.NewCient(timeplusAddress, tenants[n], apiKeys[n])
+			ingest(timeplusClient, tenants[n], streamName, numStreams, batchSize, iterations, concurrency)
+		}(i)
+	}
+	wg.Wait()
 }
